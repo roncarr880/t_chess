@@ -1429,11 +1429,13 @@ int pbs, pbd;
 int chkchk3( int x, int y, int p, int q, int color ){
 uchar piece;
 int pbs, pbd;
+int promote;
 
       chkf= 0;
       cut = 0;
       scout = 1;
       if( ppactive ) ++ppactive;   // disable for this routine
+      promote = 0;
       
       // change to board index
       pbs = 8 * y + x;
@@ -1442,10 +1444,15 @@ int pbs, pbd;
       piece= board[pbd];           // computer moves
       board[pbd]= board[pbs];
       board[pbs]= 0;
+      if( (board[pbd] & 7 ) == PAWN && ( pbd < 8 || pbd > 55 ) ){
+          board[pbd] += 4;
+          promote = 1;
+      }
 
       tandy_main(1, color);         // run one move only
       
       // move back the temp move
+      if( promote ) board[pbd] -= 4;
       board[pbs]= board[pbd];
       board[pbd]= piece;
 
