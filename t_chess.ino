@@ -151,6 +151,9 @@ char rbuf[8];     // keyboard command buffer
 
 int debug_print = 1;   // !!! decide what to print when this is turned off
 
+#define BS 8      // backspace
+#define DEL 127   // it seems delete is sent as a backspace with puTTY under windows
+
 
 void setup() {
 
@@ -745,6 +748,12 @@ int i;
   while( 1 ){
     if( Serial.available() ){
        c = rbuf[i++] = Serial.read();
+       bufin(c);
+       // Serial.print(c,HEX);  
+       if( c == BS || c == DEL ){   // backspace or delete.  remove the backspace and the preceeding character also
+           --i;            // from the buffer.
+           if( i ) --i;
+       }
        i &= 7;
        if( c == '\n' || c == '\r' ) break;
     }
@@ -756,7 +765,7 @@ int i;
   y2  = rbuf[3] - '1';
 
     rbuf[ i-1 ] = 0;
-    Serial.print( rbuf );  Serial.print( "  " );
+    Serial.print( rbuf );  Serial.print( "  " );  // redundant when using puTTY but nice to have for the serial monitor.
    
   return rbuf[0];   // return a one letter command. quit, castle, black, white, you move, demo game.
 
