@@ -269,6 +269,7 @@ int val;              // move score
 int chk;
 int tmp;
 int mi;
+int s_time;
 uchar fx,fy,fp,fq;
 
    if( ( mate = mate_detect(color)) ){   // see if we lost
@@ -284,7 +285,7 @@ uchar fx,fy,fp,fq;
    //  pick our best level 3 move with an alternate pick move algorithm
       scout = 1;  cut = 0;  sindex = 0;         // scout at level 3, no cut as want best non stalemate move
       tmp = debug_print;           
-      debug_print = 0; 
+      if( gsd > 3 ) debug_print = 0;           // print the moves if this is the only scout to run
       recording = 1;   
       tandy_main( 3, color );
       recording = 0; 
@@ -292,6 +293,7 @@ uchar fx,fy,fp,fq;
       mi = pick_move2(color);                   // the move is saved in the altx, alty, altp, altq variables
       val = moves[mi].score;                    // if needed after running scout below
    print_move(3,mi); 
+   s_time = timer;
    
    if( val <= WIN ){                            // use this move
       fx = moves[mi].x;
@@ -301,22 +303,25 @@ uchar fx,fy,fp,fq;
    }
    else{            // run the regular scout and deeper search
       crlf();
-      cut = 1;      // use cut for scout  
+      cut = gcut;      // use cut for scout ?
      // timer = 0; 
       sd = gsd;     // scout depth
-      scout = 1;                             // scout a new move table
-      sindex = 0;    
-      move_score(0,0,0,0,0,0);                 // reset debug print margins
-      recording = 1;
-      val = tandy_main( sd, color );
-      recording = 0;
-      print_move(sd, 0);   // scout's best move and search time
-      crlf();
+      if( sd > 3 ){    // don't repeat the level 3 scout
+         scout = 1;                             // scout a new move table
+         sindex = 0;    
+         move_score(0,0,0,0,0,0);                 // reset debug print margins
+         recording = 1;
+         val = tandy_main( sd, color );
+         recording = 0;
+         print_move(sd, 0);   // scout's best move and search time
+         crlf();
+         s_time = timer;
+      }
       scout = 0;   
       sd = gdd;                             // search depth is the deeper level
       uindex = sindex;                      // in case we don't do the deeper search
-      if( /* cut == 1 && */ timer < 8000 ){
-          cut = gcut;                          // use cut on the deeper searches?
+      if( /* cut == 1 && */ timer < 4000 ){
+          cut = 1;                          // use cut on the deeper searches?
           uindex = 0;                       // update best moves first
           move_score(0,0,0,0,0,0);          // even up the debug display
           recording = 1;
@@ -324,7 +329,7 @@ uchar fx,fy,fp,fq;
           recording = 0;
       }
 
-      adjust_levels((int)timer, sindex);  // adjust search depth 
+      adjust_levels((int)timer, s_time);  // adjust search depth 
     //  print_move(sd, val );     //  get to see the new time and maybe some bogus move information
       sindex = uindex;          // cap valid moves to the ones we updated
    
@@ -355,8 +360,7 @@ uchar fx,fy,fp,fq;
    chk = chkchk( color );
    if( chk ) bufin('+');
    crlf();
- 
-                                              
+                                             
    if( ( mate = mate_detect(color ^ WHITE_)) ){   // see if we won
       draw_board();
       Serial.print( " *** Mate ***");
@@ -369,22 +373,27 @@ uchar fx,fy,fp,fq;
  /* settle at a move time between 5 and 20 seconds */
  // when scouting with cut enabled, the deeper search is allowed 8 seconds in function moves_update
  // and more time if all the moves scouted have the same score
-void adjust_levels( int msec, int total_moves ){
-int lev_s[] = {3,3,4,4,5,5,6};     // make changes here rather than write new code when experimenting
-int lev_d[] = {4,4,5,5,6,6,7};
-int cuts[]  = {1,0,1,0,1,0,1};     // use cut when deeper search.  Increases speed and potential bad moves.
+void adjust_levels( int total_time, int scout_time ){
+int lev_s[] = {3,4,5,6,6,6,6};     // make changes here rather than write new code when experimenting
+int lev_d[] = {4,5,6,7,7,7,7};
+int cuts[]  = {0,1,1,1,1,1,1};     // use cut when scout search.  Increases speed and potential bad moves.
 int level_change = 0;              // but get the benefit of a deeper search.
-static int ave_time = 10000;
+static int ave_time = 8000;
+static int s_ave_time = 2000;
 
    gdc += 2;                             // just used to limit starting moves to central pawns
 
-   ave_time = 7 * ave_time + msec;
+   ave_time = 7 * ave_time + total_time;
    ave_time = ave_time / 8;
+   s_ave_time = 7 * s_ave_time + scout_time;
+   s_ave_time = s_ave_time / 8;
    crlf();
-   Serial.print("Ave Time ");  Serial.println(ave_time);
+   Serial.print("Ave Time ");  Serial.print(s_ave_time); Serial.print("  "); Serial.println(ave_time);
 
-   if( msec > 30000 ) level_change = -1;   // ? pawn promoted
+   if( total_time > 30000 ) level_change = -1;   // ? pawn promoted
    if( ave_time < 4000 ) level_change = 1;
+   //if( scout_time < 1000 && gdc > 9 && ave_time < 6000 ) level_change = 1;
+   if( s_ave_time < 800 ) level_change = 1;
    if( ave_time > 12000 ) level_change = -1;
 
    if( level_change ){
@@ -395,6 +404,7 @@ static int ave_time = 10000;
        gdd = lev_d[levels];
        gcut = cuts[levels];               // cut scout or not
        ave_time = 8000;                   // set to a neutral value to avoid double changes
+       s_ave_time = 2000;
    }
   
 }
@@ -411,7 +421,7 @@ char c;
    mate = 0;
    p_time = t_time = 0;
    turn_count = 0;
-   levels = 1;
+   levels = 0;
    gsd = 3;  gdc = 5;   gdd = 4;     // game start search levels.  gdc is 5 for center pawn moves only
    gcut = 0;
 
